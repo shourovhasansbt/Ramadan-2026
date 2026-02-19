@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ramadan 2026 - GPS Timetable</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700&family=Poppins:wght@300;500;700&display=swap');
+        body { font-family: 'Poppins', 'Hind Siliguri', sans-serif; background-color: #f1f5f9; }
+        .hero-bg { background: linear-gradient(135deg, #064e3b 0%, #065f46 100%); }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(8px); }
+        .loader { border-top-color: #059669; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Header & Hero -->
+    <header class="hero-bg text-white pb-24 pt-10 px-4 text-center relative overflow-hidden">
+        <div class="relative z-10 max-w-2xl mx-auto">
+            <h1 class="text-3xl md:text-5xl font-bold mb-2">Ramadan 2026</h1>
+            <p id="location-name" class="text-emerald-200 text-lg mb-6"><i class="fas fa-map-marker-alt mr-2"></i>Detecting Location...</p>
+            
+            <!-- Dynamic Countdown -->
+            <div class="glass text-slate-900 rounded-3xl p-6 shadow-2xl inline-block w-full">
+                <p id="timer-label" class="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Next Event</p>
+                <div id="countdown" class="text-5xl md:text-6xl font-bold tracking-tighter mb-2">00:00:00</div>
+                <div id="timer-subtext" class="text-sm font-medium text-emerald-600">Syncing with your GPS...</div>
+            </div>
+        </div>
+        <!-- Decorative mosque outline -->
+        <i class="fas fa-mosque absolute -bottom-10 left-1/2 -translate-x-1/2 text-[15rem] opacity-10 pointer-events-none"></i>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 -mt-12 relative z-20 pb-12">
+        
+        <!-- Action Bar -->
+        <div class="glass rounded-2xl p-4 shadow-lg mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-2">
+                <button onclick="getLocation()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition flex items-center gap-2">
+                    <i class="fas fa-crosshairs"></i> Use GPS
+                </button>
+                <input type="text" id="city-input" placeholder="Enter City (e.g. Sylhet)" class="border border-slate-200 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none w-40 md:w-auto">
+                <button onclick="searchCity()" class="bg-slate-800 text-white p-2 rounded-xl hover:bg-slate-900 transition">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+            <div class="flex gap-6 text-center">
+                <div>
+                    <p class="text-[10px] text-slate-400 uppercase font-bold">Today Seheri</p>
+                    <p id="top-seheri" class="font-bold text-slate-800">--:--</p>
+                </div>
+                <div>
+                    <p class="text-[10px] text-slate-400 uppercase font-bold">Today Iftar</p>
+                    <p id="top-iftar" class="font-bold text-slate-800">--:--</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Full Month Table -->
+        <div class="glass rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
+            <div class="bg-slate-50 p-4 border-b border-slate-200 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800">Full Month Calendar 1447 AH</h3>
+                <span id="method-label" class="text-[10px] bg-slate-200 text-slate-600 px-2 py-1 rounded-full">Method: IFB</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase">
+                        <tr>
+                            <th class="px-6 py-4">Day</th>
+                            <th class="px-6 py-4">Date</th>
+                            <th class="px-6 py-4 text-emerald-600">Seheri (Fajr)</th>
+                            <th class="px-6 py-4 text-orange-600">Iftar (Maghrib)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="calendar-body" class="divide-y divide-slate-100 text-sm">
+                        <!-- Content via Javascript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+            <div class="bg-white p-8 rounded-3xl text-center">
+                <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4 mx-auto"></div>
+                <p class="text-slate-600 font-medium">Fetching Prayer Times...</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let currentCoords = { lat: 23.8103, lon: 90.4125 }; // Default Dhaka
+        let cityDisplay = "Dhaka, Bangladesh";
+        let fullSchedule = [];
+
+        async function fetchTimings(lat, lon, locationName) {
+            document.getElementById('loading-overlay').classList.remove('hidden');
+            try {
+                // Fetch full month for Feb 2026 and Mar 2026 (Ramadan spans both)
+                const febRes = await fetch(`https://api.aladhan.com/v1/calendar?latitude=${lat}&longitude=${lon}&method=1&month=2&year=2026`);
+                const marRes = await fetch(`https://api.aladhan.com/v1/calendar?latitude=${lat}&longitude=${lon}&method=1&month=3&year=2026`);
+                
+                const febData = await febRes.json();
+                const marData = await marRes.json();
+                
+                // Combine and filter for Hijri Month 9 (Ramadan)
+                const combined = [...febData.data, ...marData.data];
+                fullSchedule = combined.filter(day => day.date.hijri.month.number === 9);
+
+                cityDisplay = locationName;
+                updateDisplay();
+            } catch (error) {
+                console.error("Fetch error:", error);
+                alert("Could not fetch data. Please check your internet connection.");
+            } finally {
+                document.getElementById('loading-overlay').classList.add('hidden');
+            }
+        }
+
+        function updateDisplay() {
+            document.getElementById('location-name').innerText = cityDisplay;
+            const tbody = document.getElementById('calendar-body');
+            tbody.innerHTML = '';
+
+            const now = new Date();
+            const todayStr = now.toLocaleDateString('en-GB').replace(/\//g, '-'); // "DD-MM-YYYY"
+
+            fullSchedule.forEach(day => {
+                const isToday = day.date.gregorian.date === todayStr;
+                const row = document.createElement('tr');
+                if (isToday) {
+                    row.className = 'bg-emerald-50 border-l-4 border-emerald-500';
+                    document.getElementById('top-seheri').innerText = formatTime(day.timings.Fajr);
+                    document.getElementById('top-iftar').innerText = formatTime(day.timings.Maghrib);
+                }
+
+                row.innerHTML = `
+                    <td class="px-6 py-4 font-bold text-slate-700">${day.date.hijri.day} Ramadan</td>
+                    <td class="px-6 py-4 text-slate-500">${day.date.gregorian.day} ${day.date.gregorian.month.en}</td>
+                    <td class="px-6 py-4 font-semibold text-emerald-700">${formatTime(day.timings.Fajr)}</td>
+                    <td class="px-6 py-4 font-semibold text-orange-700">${formatTime(day.timings.Maghrib)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function formatTime(timeStr) {
+            // Remove timezone info if exists e.g. "05:12 (+06)"
+            const cleaned = timeStr.split(' ')[0];
+            const [h, m] = cleaned.split(':');
+            const hour = parseInt(h);
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            const displayH = hour % 12 || 12;
+            return `${displayH}:${m} ${ampm}`;
+        }
+
+        function startCountdown() {
+            setInterval(() => {
+                if (fullSchedule.length === 0) return;
+
+                const now = new Date();
+                const todayStr = now.toLocaleDateString('en-GB').replace(/\//g, '-');
+                const todayData = fullSchedule.find(d => d.date.gregorian.date === todayStr);
+
+                if (!todayData) return;
+
+                const getTarget = (timeStr, isTomorrow = false) => {
+                    const [h, m] = timeStr.split(' ')[0].split(':');
+                    const t = new Date();
+                    if (isTomorrow) t.setDate(t.getDate() + 1);
+                    t.setHours(h, m, 0);
+                    return t;
+                };
+
+                const seheri = getTarget(todayData.timings.Fajr);
+                const iftar = getTarget(todayData.timings.Maghrib);
+                let target, label;
+
+                if (now < seheri) {
+                    target = seheri;
+                    label = "Remaining for Seheri";
+                } else if (now < iftar) {
+                    target = iftar;
+                    label = "Remaining for Iftar";
+                } else {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(now.getDate() + 1);
+                    const tomStr = tomorrow.toLocaleDateString('en-GB').replace(/\//g, '-');
+                    const tomData = fullSchedule.find(d => d.date.gregorian.date === tomStr);
+                    if (tomData) {
+                        target = getTarget(tomData.timings.Fajr, true);
+                        label = "Time until Next Seheri";
+                    }
+                }
+
+                if (target) {
+                    const diff = target - now;
+                    const h = Math.floor(diff / 3600000);
+                    const m = Math.floor((diff % 3600000) / 60000);
+                    const s = Math.floor((diff % 60000) / 1000);
+                    document.getElementById('timer-label').innerText = label;
+                    document.getElementById('countdown').innerText = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                    document.getElementById('timer-subtext').innerText = label.includes("Iftar") ? "Have patience and dhikr." : "Rest well for your fast.";
+                }
+            }, 1000);
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                document.getElementById('loading-overlay').classList.remove('hidden');
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        fetchTimings(pos.coords.latitude, pos.coords.longitude, "Your Current Location");
+                    },
+                    (err) => {
+                        alert("Permission denied. Using default: Dhaka.");
+                        fetchTimings(23.8103, 90.4125, "Dhaka, Bangladesh");
+                    }
+                );
+            }
+        }
+
+        async function searchCity() {
+            const city = document.getElementById('city-input').value;
+            if (!city) return;
+            
+            document.getElementById('loading-overlay').classList.remove('hidden');
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${city}`);
+                const data = await res.json();
+                if (data.length > 0) {
+                    fetchTimings(data[0].lat, data[0].lon, data[0].display_name.split(',')[0]);
+                } else {
+                    alert("City not found.");
+                }
+            } catch (e) {
+                alert("Search failed.");
+            } finally {
+                document.getElementById('loading-overlay').classList.add('hidden');
+            }
+        }
+
+        window.onload = () => {
+            fetchTimings(23.8103, 90.4125, "Dhaka, Bangladesh");
+            startCountdown();
+        };
+    </script>
+</body>
+</html>
